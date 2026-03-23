@@ -10,7 +10,7 @@ including multi-branch logic — can be expressed without changing Go code.
 - **Language:** Go 1.26.1
 - **Module:** `temporal-cart-flow`
 - **Temporal SDK:** `go.temporal.io/sdk v1.41.1`
-- **Infrastructure:** Docker Compose (Temporal Server + PostgreSQL + Temporal UI)
+- **Infrastructure:** Docker Compose (Temporal Server + Cassandra + Temporal UI)
 
 ## Directory Structure
 
@@ -188,3 +188,6 @@ replay-safe without extra activity timeouts.
 - Duration strings use Go's `time.ParseDuration` format (`s`, `m`, `h`). Days (`d`) are not supported natively — use `"24h"` instead.
 - `signaler/main.go` always sends the `"email-open"` signal with a hardcoded payload. Generalise if needed.
 - `trigger/main.go` blocks until the workflow completes (`we.Get`). For fire-and-forget, remove that call.
+
+## ToDo
+- expose apis to trigger flows with full json

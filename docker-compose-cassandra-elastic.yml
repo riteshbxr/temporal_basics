@@ -10,13 +10,12 @@ services:
       retries: 10
       start_period: 90s
 
-  opensearch:
-    image: opensearchproject/opensearch:2.13.0
+  elasticsearch:
+    image: elasticsearch:8.13.0
     environment:
       - discovery.type=single-node
-      - plugins.security.disabled=true
-      - DISABLE_INSTALL_DEMO_CONFIG=true
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
     healthcheck:
@@ -33,16 +32,16 @@ services:
       - CASSANDRA_SEEDS=cassandra
       - CASSANDRA_PORT=9042
       - ENABLE_ES=true
-      - ES_SEEDS=opensearch
+      - ES_SEEDS=elasticsearch
       - ES_PORT=9200
-      - ES_VERSION=v7
+      - ES_VERSION=v8
       - ES_SCHEME=http
     ports:
       - "7233:7233"
     depends_on:
       cassandra:
         condition: service_healthy
-      opensearch:
+      elasticsearch:
         condition: service_healthy
 
   temporal-ui:

@@ -66,6 +66,46 @@ Templates `{{contact.name}}`, `{{contact.email}}`, `{{contact.phone}}` are resol
 - Go 1.24+
 - Docker + Docker Compose
 
+## Infrastructure options
+
+Four compose files are provided. Pick one based on your needs.
+
+| File | Persistence | Visibility | License | Notes |
+|------|------------|------------|---------|-------|
+| `docker-compose.yml` | Cassandra 4.1 | OpenSearch 2.13 | Apache 2.0 | **Recommended** — production-grade, fully open |
+| `docker-compose-cassandra.yml` | Cassandra 4.1 | Cassandra (default) | Apache 2.0 | Lightweight, no search backend |
+| `docker-compose-cassandra-elastic.yml` | Cassandra 4.1 | Elasticsearch 8.13 | ELv2 ⚠ | Cannot be offered as a managed service |
+| `docker-compose-postgresql.yml` | PostgreSQL 13 | PostgreSQL (default) | Apache 2.0 | Simpler ops if you already run Postgres |
+
+> **Visibility** controls workflow search in the Temporal UI (filter by status, start time, workflow type, etc.).
+> Without a dedicated search backend (OpenSearch/Elasticsearch) only basic filtering is available.
+
+### Cassandra + OpenSearch (recommended)
+
+```bash
+docker compose up -d                          # uses docker-compose.yml by default
+```
+
+### Cassandra only
+
+```bash
+docker compose -f docker-compose-cassandra.yml up -d
+```
+
+### Cassandra + Elasticsearch
+
+```bash
+docker compose -f docker-compose-cassandra-elastic.yml up -d
+```
+
+### PostgreSQL only
+
+```bash
+docker compose -f docker-compose-postgresql.yml up -d
+```
+
+---
+
 ## Running
 
 **Step 1 — Start the Temporal server:**

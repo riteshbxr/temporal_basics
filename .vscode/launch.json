@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Worker",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/worker/main.go",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Starter",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/starter/main.go",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

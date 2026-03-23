@@ -1,0 +1,68 @@
+{
+  "data": {
+    "contact": {
+      "name": "Ritesh Kumar",
+      "email": "user@example.com",
+      "phone": "+1-555-0100"
+    },
+    "trigger": {
+      "type": "manual",
+      "payload": {}
+    }
+  },
+  "workflow": {
+    "id": "email-track-workflow",
+    "task_queue": "approval-task-queue",
+    "steps": [   
+      {
+        "id": 0,
+        "type": "wait",
+        "from": "trigger",
+        "to": 1,
+        "wait_duration": "1m"
+      },
+      {
+        "id": 1,
+        "type": "sendEmail",
+        "from": "trigger",
+        "to": 2,
+        "properties": {
+          "toEmail": "{{contact.email}}",
+          "subject": "Hello from Temporal",
+          "body": "Hi {{contact.name}}, please open this email to continue."
+        }
+      },
+      {
+        "id": 2,
+        "type": "waitForEvent",
+        "from": 1,
+        "on_event": 3,
+        "on_timeout": 4,
+        "event_type": "email-open",
+        "timeout": "2m"
+      },
+      {
+        "id": 3,
+        "type": "sendEmail",
+        "from": 2,
+        "to": null,
+        "properties": {
+          "toEmail": "{{contact.email}}",
+          "subject": "Thanks for opening!",
+          "body": "Hi {{contact.name}}, here is your special offer: use code TEMPORAL10 for 10% off."
+        }
+      },
+      {
+        "id": 4,
+        "type": "sendEmail",
+        "from": 2,
+        "to": null,
+        "properties": {
+          "toEmail": "{{contact.email}}",
+          "subject": "We missed you",
+          "body": "Hi {{contact.name}}, we noticed you did not open our previous email."
+        }
+      }
+    ]
+  }
+}

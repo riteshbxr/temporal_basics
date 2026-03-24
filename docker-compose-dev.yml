@@ -79,8 +79,8 @@ services:
       retries: 10
       start_period: 30s
 
-  api:
-    image: riteshbxr/temporal-poc:1.1.0
+  local-api:
+    build: .
     command: go run api/main.go
     ports:
       - "8081:8081"
@@ -94,8 +94,8 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  worker:
-    image: riteshbxr/temporal-poc:1.1.0
+  local-worker:
+    build: .
     command: go run worker/main.go
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -104,8 +104,8 @@ services:
         condition: service_healthy
     restart: on-failure
 
-  kafka-consumer:
-    image: riteshbxr/temporal-poc:1.1.0
+  local-kafka-consumer:
+    build: .
     command: go run kafka-consumer/main.go
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -116,7 +116,6 @@ services:
       kafka:
         condition: service_healthy
     restart: on-failure
-
 
   temporal-ui:
     image: temporalio/ui:latest

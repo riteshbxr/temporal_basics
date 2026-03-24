@@ -272,3 +272,12 @@ This eliminates StatefulSet complexity for the two most critical stores. You the
 | **workflow.Sleep** | Durable timer — survives worker restarts, no activity needed |
 | **Worker** | Polls the task queue and executes workflows/activities |
 | **Task Queue** | Named channel connecting triggers to workers |
+
+## Deploy Docker Image
+```
+export temporal_poc_version="1.1.0"
+docker build . -t riteshbxr/temporal-poc:$temporal_poc_version
+docker tag riteshbxr/temporal-poc:$temporal_poc_version riteshbxr/temporal-poc:latest
+docker push riteshbxr/temporal-poc:latest
+docker push riteshbxr/temporal-poc:$temporal_poc_version
+```

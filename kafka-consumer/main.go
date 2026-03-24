@@ -17,11 +17,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	kafka "github.com/segmentio/kafka-go"
@@ -31,9 +33,10 @@ import (
 )
 
 const (
-	topicStart    = "temporal.workflow.start"
-	topicSignal   = "temporal.workflow.signal"
-	consumerGroup = "temporal-consumer"
+	topicStart         = "temporal.workflow.start"
+	topicSignal        = "temporal.workflow.signal"
+	consumerGroupStart = "temporal-consumer-start"
+	consumerGroupSignal = "temporal-consumer-signal"
 )
 
 var kafkaBroker = envOrDefault("KAFKA_BROKER", "localhost:9092")
@@ -45,25 +48,47 @@ func envOrDefault(key, def string) string {
 	return def
 }
 
-type startMessage struct {
-	Input workflow.WorkflowInput `json:"input"`
-}
-
 type signalMessage struct {
 	WorkflowID string `json:"workflow_id"`
 	SignalName string `json:"signal_name"`
 	Payload    string `json:"payload"`
 }
 
+func ensureTopics(ctx context.Context, addr string, topics ...string) {
+	cl := &kafka.Client{
+		Addr:    kafka.TCP(addr),
+		Timeout: 15 * time.Second,
+	}
+	specs := make([]kafka.TopicConfig, len(topics))
+	for i, t := range topics {
+		specs[i] = kafka.TopicConfig{Topic: t, NumPartitions: 1, ReplicationFactor: 1}
+	}
+	resp, err := cl.CreateTopics(ctx, &kafka.CreateTopicsRequest{
+		Addr:   kafka.TCP(addr),
+		Topics: specs,
+	})
+	if err != nil {
+		log.Fatalf("kafka: create topics request failed: %v", err)
+	}
+	for topic, terr := range resp.Errors {
+		if terr != nil && !errors.Is(terr, kafka.TopicAlreadyExists) {
+			log.Fatalf("kafka: failed to create topic %q: %v", topic, terr)
+		}
+	}
+	log.Printf("kafka: topics ready: %v", topics)
+}
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	ensureTopics(ctx, kafkaBroker, topicStart, topicSignal)
+
 	c, err := client.Dial(client.Options{HostPort: envOrDefault("TEMPORAL_HOST", "localhost:7233")})
 	if err != nil {
 		log.Fatal("failed to connect to Temporal:", err)
 	}
 	defer c.Close()
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -86,15 +111,16 @@ func main() {
 // consumeStart reads from temporal.workflow.start and starts a workflow for each message.
 func consumeStart(ctx context.Context, c client.Client) {
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaBroker},
-		Topic:   topicStart,
-		GroupID: consumerGroup,
+		Brokers:     []string{kafkaBroker},
+		Topic:       topicStart,
+		GroupID:     consumerGroupStart,
+		StartOffset: kafka.FirstOffset,
 	})
 	defer r.Close()
 
 	log.Printf("listening on topic %s...", topicStart)
 	for {
-		msg, err := r.ReadMessage(ctx)
+		msg, err := r.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -103,19 +129,26 @@ func consumeStart(ctx context.Context, c client.Client) {
 			continue
 		}
 
-		var m startMessage
-		if err := json.Unmarshal(msg.Value, &m); err != nil {
+		var input workflow.WorkflowInput
+		if err := json.Unmarshal(msg.Value, &input); err != nil {
 			log.Printf("start: invalid message at offset %d: %v", msg.Offset, err)
+			if err := r.CommitMessages(ctx, msg); err != nil {
+				log.Println("start: commit error (bad msg):", err)
+			}
 			continue
 		}
-
-		input := m.Input
 		if input.Workflow.TaskQueue == "" {
 			log.Printf("start: missing task_queue at offset %d, skipping", msg.Offset)
+			if err := r.CommitMessages(ctx, msg); err != nil {
+				log.Println("start: commit error (missing task_queue):", err)
+			}
 			continue
 		}
 
-		wfID := input.Workflow.ID + "-" + uuid.New().String()
+		wfID := input.InstanceID
+		if wfID == "" {
+			wfID = uuid.New().String()
+		}
 		we, err := c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 			ID:        wfID,
 			TaskQueue: input.Workflow.TaskQueue,
@@ -126,21 +159,25 @@ func consumeStart(ctx context.Context, c client.Client) {
 		}
 
 		log.Printf("[kafka→start] workflow_id=%s run_id=%s", we.GetID(), we.GetRunID())
+		if err := r.CommitMessages(ctx, msg); err != nil {
+			log.Println("start: commit error:", err)
+		}
 	}
 }
 
 // consumeSignal reads from temporal.workflow.signal and forwards each signal to Temporal.
 func consumeSignal(ctx context.Context, c client.Client) {
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{kafkaBroker},
-		Topic:   topicSignal,
-		GroupID: consumerGroup,
+		Brokers:     []string{kafkaBroker},
+		Topic:       topicSignal,
+		GroupID:     consumerGroupSignal,
+		StartOffset: kafka.FirstOffset,
 	})
 	defer r.Close()
 
 	log.Printf("listening on topic %s...", topicSignal)
 	for {
-		msg, err := r.ReadMessage(ctx)
+		msg, err := r.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -152,11 +189,17 @@ func consumeSignal(ctx context.Context, c client.Client) {
 		var m signalMessage
 		if err := json.Unmarshal(msg.Value, &m); err != nil {
 			log.Printf("signal: invalid message at offset %d: %v", msg.Offset, err)
+			if err := r.CommitMessages(ctx, msg); err != nil {
+				log.Println("signal: commit error (bad msg):", err)
+			}
 			continue
 		}
 
 		if m.WorkflowID == "" || m.SignalName == "" {
 			log.Printf("signal: missing workflow_id or signal_name at offset %d, skipping", msg.Offset)
+			if err := r.CommitMessages(ctx, msg); err != nil {
+				log.Println("signal: commit error (missing fields):", err)
+			}
 			continue
 		}
 
@@ -166,5 +209,8 @@ func consumeSignal(ctx context.Context, c client.Client) {
 		}
 
 		log.Printf("[kafka→signal] workflow_id=%s signal=%s", m.WorkflowID, m.SignalName)
+		if err := r.CommitMessages(ctx, msg); err != nil {
+			log.Println("signal: commit error:", err)
+		}
 	}
 }

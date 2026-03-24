@@ -43,7 +43,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"data\": {\n    \"contact\": {\n      \"name\": \"Ritesh Kumar\",\n      \"email\": \"user@example.com\",\n      \"phone\": \"+1-555-0100\"\n    },\n    \"trigger\": {\n      \"type\": \"manual\",\n      \"payload\": {}\n    }\n  },\n  \"workflow\": {\n    \"id\": \"email-track-workflow\",\n    \"task_queue\": \"approval-task-queue\",\n    \"steps\": [   \n      {\n        \"id\": 0,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 1,\n        \"wait_duration\": \"3s\"\n      },\n      {\n        \"id\": 1,\n        \"type\": \"sendEmail\",\n        \"from\": \"trigger\",\n        \"to\": 2,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"Hello from Temporal\",\n          \"body\": \"Hi {{contact.name}}, please open this email to continue.\"\n        }\n      },\n      {\n        \"id\": 2,\n        \"type\": \"waitForEvent\",\n        \"from\": 1,\n        \"on_event\": 11,\n        \"on_timeout\": 12,\n        \"event_type\": \"email-open\",\n        \"timeout\": \"1m\"\n      },\n    {\n        \"id\": 11,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 3,\n        \"wait_duration\": \"10s\"\n      },\n          {\n        \"id\": 12,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 4,\n        \"wait_duration\": \"10s\"\n      },\n      {\n        \"id\": 3,\n        \"type\": \"sendEmail\",\n        \"from\": 2,\n        \"to\": null,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"Thanks for opening!\",\n          \"body\": \"Hi {{contact.name}}, Thanks for Opening the Email.\"\n        }\n      },\n      {\n        \"id\": 4,\n        \"type\": \"sendEmail\",\n        \"from\": 2,\n        \"to\": null,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"We missed you\",\n          \"body\": \"Hi {{contact.name}}, we noticed you did not open our previous email.\"\n        }\n      }\n    ]\n  }\n}\n",
+          "raw": "{\n    \"instance_id\": \"\",\n    \"data\": {\n        \"contact\": {\n            \"name\": \"Ritesh Kumar\",\n            \"email\": \"user@example.com\",\n            \"phone\": \"+1-555-0100\"\n        },\n        \"trigger\": {\n            \"type\": \"manual\",\n            \"payload\": {}\n        }\n    },\n    \"workflow\": {\n        \"id\": \"email-track-workflow\",\n        \"task_queue\": \"approval-task-queue\",\n        \"steps\": [\n            {\n                \"id\": 0,\n                \"type\": \"wait\",\n                \"from\": \"trigger\",\n                \"to\": 1,\n                \"wait_duration\": \"3s\"\n            },\n            {\n                \"id\": 1,\n                \"type\": \"sendEmail\",\n                \"from\": 0,\n                \"to\": 2,\n                \"properties\": {\n                    \"toEmail\": \"{{contact.email}}\",\n                    \"subject\": \"Hello from Temporal\",\n                    \"body\": \"Hi {{contact.name}}, please open this email to continue.\"\n                }\n            },\n            {\n                \"id\": 2,\n                \"type\": \"waitForEvent\",\n                \"from\": 1,\n                \"on_event\": 11,\n                \"on_timeout\": 12,\n                \"event_type\": \"email-open\",\n                \"timeout\": \"1m\"\n            },\n            {\n                \"id\": 11,\n                \"type\": \"wait\",\n                \"from\": 2,\n                \"to\": 3,\n                \"wait_duration\": \"10s\"\n            },\n            {\n                \"id\": 12,\n                \"type\": \"wait\",\n                \"from\": 2,\n                \"to\": 4,\n                \"wait_duration\": \"10s\"\n            },\n            {\n                \"id\": 3,\n                \"type\": \"sendEmail\",\n                \"from\": 11,\n                \"to\": null,\n                \"properties\": {\n                    \"toEmail\": \"{{contact.email}}\",\n                    \"subject\": \"Thanks for opening!\",\n                    \"body\": \"Hi {{contact.name}}, Thanks for Opening the Email.\"\n                }\n            },\n            {\n                \"id\": 4,\n                \"type\": \"sendEmail\",\n                \"from\": 12,\n                \"to\": null,\n                \"properties\": {\n                    \"toEmail\": \"{{contact.email}}\",\n                    \"subject\": \"We missed you\",\n                    \"body\": \"Hi {{contact.name}}, we noticed you did not open our previous email.\"\n                }\n            }\n        ]\n    }\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -135,11 +135,124 @@
         }
       },
       "response": []
+    },
+    {
+      "name": "kafka Trigger",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Ensure instance_id is set to a random UUID before the call",
+              "const body = pm.request.body && pm.request.body.raw ? JSON.parse(pm.request.body.raw) : null;",
+              "",
+              "if (body?.payload?.input) {",
+              "  const uuid = pm.variables.replaceIn(\"{{$guid}}\");",
+              "  pm.collectionVariables.set(\"workflow_id\", uuid);",
+              "}"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topic\": \"temporal.workflow.start\",\n    \"payload\": {\n        \"input\": {\n            \"instance_id\": \"{{workflow_id}}\",            \n            \"data\": {\n                \"contact\": {\n                    \"name\": \"Ritesh Kumar\",\n                    \"email\": \"user@example.com\",\n                    \"phone\": \"+1-555-0100\"\n                },\n                \"trigger\": {\n                    \"type\": \"manual\",\n                    \"payload\": {}\n                }\n            },\n            \"workflow\": {\n                \"id\": \"email-track-workflow\",\n                \"task_queue\": \"approval-task-queue\",\n                \"steps\": [\n                    {\n                        \"id\": 0,\n                        \"type\": \"wait\",\n                        \"from\": \"trigger\",\n                        \"to\": 1,\n                        \"wait_duration\": \"3s\"\n                    },\n                    {\n                        \"id\": 1,\n                        \"type\": \"sendEmail\",\n                        \"from\": 0,\n                        \"to\": 2,\n                        \"properties\": {\n                            \"toEmail\": \"{{contact.email}}\",\n                            \"subject\": \"Hello from Temporal\",\n                            \"body\": \"Hi {{contact.name}}, please open this email to continue.\"\n                        }\n                    },\n                    {\n                        \"id\": 2,\n                        \"type\": \"waitForEvent\",\n                        \"from\": 1,\n                        \"on_event\": 11,\n                        \"on_timeout\": 12,\n                        \"event_type\": \"email-open\",\n                        \"timeout\": \"1m\"\n                    },\n                    {\n                        \"id\": 11,\n                        \"type\": \"wait\",\n                        \"from\": 2,\n                        \"to\": 3,\n                        \"wait_duration\": \"10s\"\n                    },\n                    {\n                        \"id\": 12,\n                        \"type\": \"wait\",\n                        \"from\": 2,\n                        \"to\": 4,\n                        \"wait_duration\": \"10s\"\n                    },\n                    {\n                        \"id\": 3,\n                        \"type\": \"sendEmail\",\n                        \"from\": 11,\n                        \"to\": null,\n                        \"properties\": {\n                            \"toEmail\": \"{{contact.email}}\",\n                            \"subject\": \"Thanks for opening!\",\n                            \"body\": \"Hi {{contact.name}}, Thanks for Opening the Email.\"\n                        }\n                    },\n                    {\n                        \"id\": 4,\n                        \"type\": \"sendEmail\",\n                        \"from\": 12,\n                        \"to\": null,\n                        \"properties\": {\n                            \"toEmail\": \"{{contact.email}}\",\n                            \"subject\": \"We missed you\",\n                            \"body\": \"Hi {{contact.name}}, we noticed you did not open our previous email.\"\n                        }\n                    }\n                ]\n            }\n        }\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/kafka",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "kafka"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "kafka Signal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"topic\": \"temporal.workflow.signal\",\n    \"payload\": {\n      \"workflow_id\": \"{{workflow_id}}\",\n      \"signal_name\": \"email-open\",\n      \"payload\": \"order-id-12345\"\n    }\n  }",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/kafka",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "kafka"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
     }
   ],
   "variable": [
     {
       "key": "workflow_id",
+      "value": ""
+    },
+    {
+      "key": "run_id",
       "value": ""
     }
   ]

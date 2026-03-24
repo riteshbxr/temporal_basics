@@ -3,8 +3,9 @@ package workflow
 import "encoding/json"
 
 type WorkflowInput struct {
-	Data     DataInput   `json:"data"`
-	Workflow WorkflowDef `json:"workflow"`
+	InstanceID string      `json:"instance_id"`
+	Data       DataInput   `json:"data"`
+	Workflow   WorkflowDef `json:"workflow"`
 }
 
 // --- Data section ---

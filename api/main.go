@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
 	"github.com/google/uuid"
 	kafka "github.com/segmentio/kafka-go"
 	"go.temporal.io/sdk/client"
+	tlog "go.temporal.io/sdk/log"
 
 	workflow "temporal-cart-flow/workflow"
 )
@@ -61,7 +63,10 @@ func (s *server) startWorkflow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workflowID := input.Workflow.ID + "-" + uuid.New().String()
+	workflowID := input.InstanceID
+	if workflowID == "" {
+		workflowID = uuid.New().String()
+	}
 	we, err := s.temporal.ExecuteWorkflow(r.Context(), client.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: input.Workflow.TaskQueue,
@@ -179,7 +184,10 @@ func kafkaPublish(ctx context.Context, topic string, value []byte) error {
 }
 
 func main() {
-	c, err := client.Dial(client.Options{HostPort: envOrDefault("TEMPORAL_HOST", "localhost:7233")})
+	c, err := client.Dial(client.Options{
+		HostPort: envOrDefault("TEMPORAL_HOST", "localhost:7233"),
+		Logger:   tlog.NewStructuredLogger(slog.Default()),
+	})
 	if err != nil {
 		log.Fatalln("Unable to connect to Temporal:", err)
 	}

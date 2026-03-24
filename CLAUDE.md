@@ -33,8 +33,10 @@ temporal_basics/
 │   └── main.go              # Registers GenericWorkflow + activities, polls task queue
 ├── trigger/
 │   └── main.go              # Reads config.json → WorkflowInput, starts GenericWorkflow
-└── signaler/
-    └── main.go              # Sends a named signal to a running workflow by ID
+├── signaler/
+│   └── main.go              # Sends a named signal to a running workflow by ID
+└── api/
+    └── main.go              # HTTP API server — trigger/inspect/signal workflows via REST
 ```
 
 ## How to Run
@@ -62,6 +64,24 @@ go run trigger/main.go
 ```bash
 go run signaler/main.go <workflow-id>
 # Sends the "email-open" signal → workflow takes on_event branch
+```
+
+**Alternative: Use the HTTP API (Terminal 2 or 3):**
+```bash
+go run api/main.go
+# API server on :8081 (Temporal UI is on :8080)
+
+# Trigger a workflow
+curl -X POST http://localhost:8081/workflows \
+  -H "Content-Type: application/json" -d @config.json
+
+# Check status
+curl http://localhost:8081/workflows/<workflow-id>
+
+# Send a signal
+curl -X POST http://localhost:8081/workflows/<workflow-id>/signal \
+  -H "Content-Type: application/json" \
+  -d '{"signal_name":"email-open","payload":"user clicked"}'
 ```
 
 **Control branching via `config.json`:**
@@ -190,4 +210,9 @@ replay-safe without extra activity timeouts.
 - `trigger/main.go` blocks until the workflow completes (`we.Get`). For fire-and-forget, remove that call.
 
 ## ToDo
-- expose apis to trigger flows with full json
+- ~~expose apis to trigger flows with full json~~ ✓ done — see `api/main.go`
+- Create a Kafka Queue for interactions
+
+
+## Instructions on Prompts
+- For any new instruction Please ensure that CLAUDE.md and README.md is uptodat

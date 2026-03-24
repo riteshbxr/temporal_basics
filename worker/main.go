@@ -27,7 +27,11 @@ func main() {
 		log.Fatalln("Failed to parse config.json:", err)
 	}
 
-	c, err := client.Dial(client.Options{HostPort: "localhost:7233"})
+	temporalHost := "localhost:7233"
+	if h := os.Getenv("TEMPORAL_HOST"); h != "" {
+		temporalHost = h
+	}
+	c, err := client.Dial(client.Options{HostPort: temporalHost})
 	if err != nil {
 		log.Fatalln("Unable to create Temporal client:", err)
 	}

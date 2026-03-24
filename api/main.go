@@ -1,15 +1,32 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/google/uuid"
+	kafka "github.com/segmentio/kafka-go"
 	"go.temporal.io/sdk/client"
 
 	workflow "temporal-cart-flow/workflow"
 )
+
+const (
+	topicStart = "temporal.workflow.start"
+	topicSignal = "temporal.workflow.signal"
+)
+
+var kafkaBroker = envOrDefault("KAFKA_BROKER", "localhost:9092")
+
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 type server struct {
 	temporal client.Client
@@ -117,8 +134,52 @@ func (s *server) signalWorkflow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+type kafkaRequest struct {
+	Topic   string          `json:"topic"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// POST /kafka
+// Body: {"topic": "temporal.workflow.start", "payload": {...}}
+// Publishes the raw payload to the given Kafka topic.
+func (s *server) kafkaPublishMessage(w http.ResponseWriter, r *http.Request) {
+	var req kafkaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.Topic != topicStart && req.Topic != topicSignal {
+		writeError(w, http.StatusBadRequest, "topic must be one of: "+topicStart+", "+topicSignal)
+		return
+	}
+	if len(req.Payload) == 0 {
+		writeError(w, http.StatusBadRequest, "payload is required")
+		return
+	}
+
+	if err := kafkaPublish(r.Context(), req.Topic, req.Payload); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to publish: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"topic":  req.Topic,
+		"status": "queued",
+	})
+}
+
+func kafkaPublish(ctx context.Context, topic string, value []byte) error {
+	w := &kafka.Writer{
+		Addr:                   kafka.TCP(kafkaBroker),
+		Topic:                  topic,
+		AllowAutoTopicCreation: true,
+	}
+	defer w.Close()
+	return w.WriteMessages(ctx, kafka.Message{Value: value})
+}
+
 func main() {
-	c, err := client.Dial(client.Options{HostPort: "localhost:7233"})
+	c, err := client.Dial(client.Options{HostPort: envOrDefault("TEMPORAL_HOST", "localhost:7233")})
 	if err != nil {
 		log.Fatalln("Unable to connect to Temporal:", err)
 	}
@@ -130,6 +191,8 @@ func main() {
 	mux.HandleFunc("POST /workflows", s.startWorkflow)
 	mux.HandleFunc("GET /workflows/{id}", s.getWorkflow)
 	mux.HandleFunc("POST /workflows/{id}/signal", s.signalWorkflow)
+
+	mux.HandleFunc("POST /kafka", s.kafkaPublishMessage)
 
 	log.Println("API server listening on :8081")
 	if err := http.ListenAndServe(":8081", mux); err != nil {

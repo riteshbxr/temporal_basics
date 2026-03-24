@@ -66,6 +66,29 @@ Templates `{{contact.name}}`, `{{contact.email}}`, `{{contact.phone}}` are resol
 - Go 1.24+
 - Docker + Docker Compose
 
+## Quick check
+
+The fastest way to verify the full flow end-to-end:
+
+**1. Start the stack** (includes the worker)
+```bash
+docker compose up -d
+```
+
+**2. Use the Postman collection** (`proto/Temporal.postman_collection.json`) to drive the workflow:
+
+| Request | What it does |
+|---------|-------------|
+| **Trigger** | `POST /workflows` — starts a new workflow run; automatically saves `workflow_id` and `run_id` to collection variables |
+| **Fetch Info** | `GET /workflows/{{workflow_id}}` — poll current status and step output |
+| **Send Signal** | `POST /workflows/{{workflow_id}}/signal` — fires the `email-open` signal, unblocking `waitForEvent` |
+
+**3. Check the Temporal UI**
+
+Open [http://localhost:8080](http://localhost:8080) to see live workflow state, history, and step-by-step execution in the Temporal dashboard.
+
+---
+
 ## Infrastructure options
 
 Four compose files are provided. Pick one based on your needs.
@@ -168,6 +191,76 @@ To test the timeout branch quickly, set `"timeout": "10s"` on the `waitForEvent`
 ## Running multiple workflows simultaneously
 
 Each `go run trigger/main.go` starts an independent run with a unique ID. You can trigger several in parallel and send signals to specific runs by their printed ID.
+
+---
+
+## Kubernetes Deployment Guidelines
+
+### Data Loss Risk
+
+The `docker-compose.yml` has **no volume mounts** — all data lives in ephemeral container storage. On Kubernetes, pods can restart or reschedule at any time, wiping all state. You must use PersistentVolumeClaims (PVCs) for every stateful service.
+
+### Service Classification
+
+| Service | Kind | PVC Needed | Replicas for HA |
+|---|---|---|---|
+| Cassandra | StatefulSet | Yes (50Gi+) | 3 |
+| OpenSearch | StatefulSet | Yes (20Gi+) | 2+ |
+| Kafka | StatefulSet | Yes (20Gi+) | 3 |
+| Temporal server | Deployment | No | 2+ |
+| api / worker / kafka-consumer | Deployment | No | 2+ |
+
+### Cassandra (most critical — Temporal's primary store)
+
+Run as a StatefulSet with a `volumeClaimTemplate`:
+
+```yaml
+volumeClaimTemplates:
+  - metadata:
+      name: cassandra-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "gp2"   # adjust for your cloud provider
+      resources:
+        requests:
+          storage: 50Gi
+```
+
+`temporal auto-setup` creates the Cassandra keyspace with replication factor 1 by default. For production, use RF=3 across 3 Cassandra nodes.
+
+### OpenSearch (Temporal visibility store)
+
+Same StatefulSet + PVC pattern. Set replicas and shard replication:
+
+```yaml
+- number_of_replicas: 1   # requires 2+ nodes
+```
+
+### Kafka
+
+Mount the Kafka data directory via a `volumeClaimTemplate` and set `KAFKA_LOG_DIRS` to point to it. For durability with multiple brokers:
+
+```yaml
+- KAFKA_DEFAULT_REPLICATION_FACTOR=3
+- KAFKA_MIN_INSYNC_REPLICAS=2   # producer must ack 2 replicas before success
+```
+
+A single-broker setup (`docker-compose.yml`) cannot survive pod loss without data loss regardless of PVCs.
+
+### Temporal Server, API, Worker, Kafka Consumer
+
+These are stateless — no storage needed. Use `Deployment` with `replicas: 2+` and a `readinessProbe` so Kubernetes only routes traffic to ready pods.
+
+### Recommended Simplification for Production
+
+Replace self-managed Cassandra and OpenSearch with managed equivalents:
+
+- **Cassandra → managed PostgreSQL** (RDS, Cloud SQL) — a `docker-compose-postgresql.yml` variant is already provided
+- **OpenSearch → managed OpenSearch Service** (AWS, GCP)
+
+This eliminates StatefulSet complexity for the two most critical stores. You then only need to manage Kafka persistence yourself.
+
+---
 
 ## Key concepts
 

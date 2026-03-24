@@ -1,0 +1,146 @@
+{
+  "info": {
+    "_postman_id": "3831a832-7555-4694-ad03-63ba8b94fb02",
+    "name": "Temporal-POC",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "53134691",
+    "_collection_link": "https://go.postman.co/collection/53134691-3831a832-7555-4694-ad03-63ba8b94fb02?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Trigger",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status is 202\", () => {",
+              "  pm.response.to.have.status(202);",
+              "});",
+              "",
+              "pm.test(\"Has run_id and workflow_id\", () => {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.run_id).to.be.a(\"string\").and.not.empty;",
+              "  pm.expect(json.workflow_id).to.be.a(\"string\").and.not.empty;",
+              "",
+              "  pm.collectionVariables.set(\"run_id\", json.run_id);",
+              "  pm.collectionVariables.set(\"workflow_id\", json.workflow_id);",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"data\": {\n    \"contact\": {\n      \"name\": \"Ritesh Kumar\",\n      \"email\": \"user@example.com\",\n      \"phone\": \"+1-555-0100\"\n    },\n    \"trigger\": {\n      \"type\": \"manual\",\n      \"payload\": {}\n    }\n  },\n  \"workflow\": {\n    \"id\": \"email-track-workflow\",\n    \"task_queue\": \"approval-task-queue\",\n    \"steps\": [   \n      {\n        \"id\": 0,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 1,\n        \"wait_duration\": \"3s\"\n      },\n      {\n        \"id\": 1,\n        \"type\": \"sendEmail\",\n        \"from\": \"trigger\",\n        \"to\": 2,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"Hello from Temporal\",\n          \"body\": \"Hi {{contact.name}}, please open this email to continue.\"\n        }\n      },\n      {\n        \"id\": 2,\n        \"type\": \"waitForEvent\",\n        \"from\": 1,\n        \"on_event\": 11,\n        \"on_timeout\": 12,\n        \"event_type\": \"email-open\",\n        \"timeout\": \"1m\"\n      },\n    {\n        \"id\": 11,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 3,\n        \"wait_duration\": \"10s\"\n      },\n          {\n        \"id\": 12,\n        \"type\": \"wait\",\n        \"from\": \"trigger\",\n        \"to\": 4,\n        \"wait_duration\": \"10s\"\n      },\n      {\n        \"id\": 3,\n        \"type\": \"sendEmail\",\n        \"from\": 2,\n        \"to\": null,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"Thanks for opening!\",\n          \"body\": \"Hi {{contact.name}}, Thanks for Opening the Email.\"\n        }\n      },\n      {\n        \"id\": 4,\n        \"type\": \"sendEmail\",\n        \"from\": 2,\n        \"to\": null,\n        \"properties\": {\n          \"toEmail\": \"{{contact.email}}\",\n          \"subject\": \"We missed you\",\n          \"body\": \"Hi {{contact.name}}, we noticed you did not open our previous email.\"\n        }\n      }\n    ]\n  }\n}\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/workflows",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "workflows"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Fetch Info",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "@config.json",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/workflows/{{workflow_id}}",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "workflows",
+            "{{workflow_id}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Send Signal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"signal_name\":\"email-open\",\"payload\":\"user clicked\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8081/workflows/{{workflow_id}}/signal",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8081",
+          "path": [
+            "workflows",
+            "{{workflow_id}}",
+            "signal"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "workflow_id",
+      "value": ""
+    }
+  ]
+}

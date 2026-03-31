@@ -117,7 +117,51 @@ Open [http://localhost:8082](http://localhost:8082) to inspect topics, consumer 
 
 ## Infrastructure options
 
-Four compose files are provided. Pick one based on your needs.
+### Component licensing & trade-offs
+
+| Technology | License | Who Controls | Self-Host Cost | Managed Options | Benefits | Problems / Risks |
+|---|---|---|---|---|---|---|
+| **PostgreSQL** | PostgreSQL License (MIT-like) | PostgreSQL Global Dev Group | Free | AWS RDS, Cloud SQL, Neon, Supabase, Aiven | Truly permissive; ACID; widely understood; Temporal advanced visibility built-in (v1.20+); no ES needed; huge managed hosting market | Not built for extreme Temporal write scale; needs PgBouncer for connection pooling; vertical scaling limits |
+| **Cassandra** | Apache 2.0 | Apache Foundation | Free | AWS Keyspaces, DataStax Astra, Instaclustr | Horizontally scalable; multi-region active-active; proven at massive scale (Meta, Netflix, Apple); no SPOF | Operationally complex — compaction, repair jobs, tuning; eventual consistency needs care; needs ES/OpenSearch for advanced Temporal visibility; overkill for small teams |
+| **ScyllaDB** | AGPL v3 (OSS) / Commercial | ScyllaDB Inc. | Free (OSS) | ScyllaDB Cloud (paid) | Drop-in Cassandra replacement written in C++ — 10x lower latency, far fewer nodes needed; same CQL API; Temporal compatible | AGPL — modifications exposed as a service must be open-sourced; commercial license needed for proprietary SaaS modifications; smaller community than Cassandra |
+| **Elasticsearch ≥ v7.11** | SSPL v1 | Elastic NV | Free to run | Elastic Cloud | Mature, battle-tested; best-in-class full-text search; deep Temporal advanced visibility support; large ecosystem | **SSPL blocks commercial SaaS use** — must open-source your whole stack or buy Elastic commercial license; Elastic can change terms again |
+| **Elasticsearch ≤ v7.10** | Apache 2.0 | Elastic NV (frozen) | Free | — | Permissive; no copyleft | **EOL — no security patches, no new features**; running in production is a security liability; avoid for new projects |
+| **OpenSearch** | Apache 2.0 | AWS / OpenSearch Foundation | Free | AWS OpenSearch Service, Aiven, Bonsai | **Best ES alternative** — permissive license; API-compatible with ES 7.10; actively maintained; Temporal officially supports it; no Elastic vendor lock-in | Lags behind ES on some advanced features; AWS-driven roadmap; smaller community than ES |
+| **Temporal Server** | MIT | Temporal Technologies | Free | Temporal Cloud (usage-based) | Fully open; no restrictions — fork, embed, sell; large and growing community | You own all ops: upgrades, schema migrations, monitoring, multi-region; requires a persistence + visibility backend |
+| **Temporal UI** | MIT | Temporal Technologies | Free | Bundled with Temporal Cloud | Clean workflow visibility; timeline views; search by attributes; open source and customisable | Advanced search features need Elasticsearch, OpenSearch, or PostgreSQL (v1.20+) |
+| **Kafka** | Apache 2.0 | Apache Foundation | Free | Confluent Cloud, AWS MSK, Aiven, Redpanda | De-facto standard for event streaming; durable log; replay capability; high throughput; huge ecosystem | Operationally heavy; complex tuning (partitions, retention, replication factor); not a queue — requires careful consumer group design |
+| **Kafka UI** | Apache 2.0 | Provectus (community) | Free | — | Clean open-source UI; topic browser, consumer lag, message inspector, schema registry support | Community-maintained — less polished than Confluent Control Center; no commercial backing or SLA |
+
+### License risk summary
+
+| Technology | Safe for Internal Use | Safe for Commercial SaaS | Key Condition |
+|---|---|---|---|
+| PostgreSQL | Yes | Yes | No restrictions |
+| Cassandra | Yes | Yes | Apache 2.0 — no restrictions |
+| ScyllaDB (OSS) | Yes | **Risky** | AGPL — modifications exposed as a service must be open-sourced |
+| ScyllaDB (Commercial) | Yes | Yes | Requires paid license |
+| Elasticsearch ≥ 7.11 | Yes | **No** | SSPL blocks SaaS use without commercial license |
+| Elasticsearch ≤ 7.10 | Technically yes | Technically yes | Apache 2.0 — but **EOL, avoid** |
+| OpenSearch | Yes | Yes | Apache 2.0 — no restrictions |
+| Temporal Server | Yes | Yes | MIT — no restrictions |
+| Temporal UI | Yes | Yes | MIT — no restrictions |
+| Kafka | Yes | Yes | Apache 2.0 — no restrictions |
+| Kafka UI | Yes | Yes | Apache 2.0 — no restrictions |
+
+### Recommended combinations
+
+| Scale / Scenario | Persistence | Visibility | Streaming | License Concern |
+|---|---|---|---|---|
+| **Small team / startup** | PostgreSQL | PostgreSQL (built-in) | Kafka | None |
+| **Mid-scale, no ES** | PostgreSQL | PostgreSQL (built-in) | Kafka | None |
+| **High scale, clean license** | Cassandra | OpenSearch | Kafka | None |
+| **High scale, cost-sensitive** | ScyllaDB (OSS, not SaaS) | OpenSearch | Kafka | AGPL on ScyllaDB modifications |
+| **Maximum scale, all in** | ScyllaDB (commercial) | Elasticsearch (commercial) | Kafka | Paid licenses required |
+| **Fully managed, no ops** | Temporal Cloud | Temporal Cloud (built-in) | Confluent Cloud | Usage-based cost |
+
+---
+
+### Docker Compose files — pick one based on your needs
 
 | File | Persistence | Visibility | License | Notes |
 |------|------------|------------|---------|-------|

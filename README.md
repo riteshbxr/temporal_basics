@@ -1,4 +1,4 @@
-# temporal-cart-flow
+# temporal-basics
 
 A learning project demonstrating [Temporal](https://temporal.io) workflows in Go.
 Models an email open-tracking flow driven by a JSON step graph: wait, send an email, wait for the recipient to open it (via a Temporal signal), then branch based on the outcome.
@@ -19,21 +19,32 @@ Each workflow run gets a unique ID (`<base-id>-<uuid>`), so multiple runs can be
 ## Project structure
 
 ```
-temporal-cart-flow/
-├── config.json                 # Step graph + contact data
+temporal-basics/
+├── config.json                 # Step graph + contact data (read by trigger, worker, api)
 ├── workflow/
 │   ├── generic_workflow.go     # GenericWorkflow — interprets the step graph
-│   └── types.go                # WorkflowInput, Step, ContactInfo etc.
+│   └── types.go                # WorkflowInput, Step, ContactInfo, etc.
 ├── activities/
 │   ├── send_email.go           # SendEmailActivity — 2s fake delay
-│   └── wait.go                 # WaitActivity (registered but unused by default)
+│   ├── wait.go                 # WaitActivity (registered but unused by default)
+│   └── wait_for_event.go       # WaitForEventActivity (registered but unused by default)
 ├── worker/
 │   └── main.go                 # Starts the Temporal worker
 ├── trigger/
-│   └── main.go                 # Starts a new workflow run
+│   └── main.go                 # CLI: starts a new workflow run directly via SDK
 ├── signaler/
-│   └── main.go                 # Sends an "email-open" signal to a running workflow
-└── docker-compose.yml          # Temporal server + UI
+│   └── main.go                 # CLI: sends an "email-open" signal to a running workflow
+├── api/
+│   └── main.go                 # HTTP REST API — trigger/signal/status + Kafka publish
+├── kafka-consumer/
+│   └── main.go                 # Kafka bridge — reads topics, triggers workflows / sends signals
+├── proto/
+│   └── Temporal-POC.postman_collection.json  # Postman collection for the HTTP API
+├── docker-compose.yml                    # Recommended: Cassandra + OpenSearch + Kafka
+├── docker-compose-dev.yml                # Local dev: same stack, built from source
+├── docker-compose-cassandra.yml          # Lightweight: Cassandra only, no search backend
+├── docker-compose-cassandra-elastic.yml  # Cassandra + Elasticsearch (ELv2 license)
+└── docker-compose-postgresql.yml         # PostgreSQL instead of Cassandra
 ```
 
 ## Configuration — `config.json`
@@ -66,26 +77,41 @@ Templates `{{contact.name}}`, `{{contact.email}}`, `{{contact.phone}}` are resol
 - Go 1.24+
 - Docker + Docker Compose
 
+## Environment variables
+
+| Variable | Service | Default | Purpose |
+|----------|---------|---------|---------|
+| `TEMPORAL_HOST` | worker, api, kafka-consumer | `localhost:7233` | Temporal server gRPC endpoint |
+| `KAFKA_BROKER` | api, kafka-consumer | `localhost:9092` | Kafka broker address |
+
+When running via `docker-compose.yml` these are pre-configured. Set them manually only when running services outside Docker.
+
 ## Quick check
 
 The fastest way to verify the full flow end-to-end:
 
-**1. Start the stack** (includes the worker)
+**1. Start the stack** (includes the worker, api, and kafka-consumer)
 ```bash
 docker compose up -d
 ```
 
-**2. Use the Postman collection** (`proto/Temporal.postman_collection.json`) to drive the workflow:
+**2. Use the Postman collection** (`proto/Temporal-POC.postman_collection.json`) to drive the workflow:
 
-| Request | What it does |
-|---------|-------------|
-| **Trigger** | `POST /workflows` — starts a new workflow run; automatically saves `workflow_id` and `run_id` to collection variables |
-| **Fetch Info** | `GET /workflows/{{workflow_id}}` — poll current status and step output |
-| **Send Signal** | `POST /workflows/{{workflow_id}}/signal` — fires the `email-open` signal, unblocking `waitForEvent` |
+| Request | Method | What it does |
+|---------|--------|-------------|
+| **Trigger** | `POST /workflows` | Start a new workflow; saves `workflow_id` and `run_id` as collection variables |
+| **Fetch Info** | `GET /workflows/{{workflow_id}}` | Poll current status and step output |
+| **Send Signal** | `POST /workflows/{{workflow_id}}/signal` | Fire the `email-open` signal, unblocking `waitForEvent` |
+| **kafka Trigger** | `POST /kafka` | Publish a workflow-start message to Kafka; kafka-consumer picks it up and starts the workflow |
+| **kafka Signal** | `POST /kafka` | Publish a signal message to Kafka; kafka-consumer forwards it to the running workflow |
 
 **3. Check the Temporal UI**
 
-Open [http://localhost:8080](http://localhost:8080) to see live workflow state, history, and step-by-step execution in the Temporal dashboard.
+Open [http://localhost:8080](http://localhost:8080) to see live workflow state, history, and step-by-step execution.
+
+**4. Check the Kafka UI**
+
+Open [http://localhost:8082](http://localhost:8082) to inspect topics, consumer groups, and message offsets.
 
 ---
 
@@ -96,6 +122,7 @@ Four compose files are provided. Pick one based on your needs.
 | File | Persistence | Visibility | License | Notes |
 |------|------------|------------|---------|-------|
 | `docker-compose.yml` | Cassandra 4.1 | OpenSearch 2.13 | Apache 2.0 | **Recommended** — production-grade, fully open |
+| `docker-compose-dev.yml` | Cassandra 4.1 | OpenSearch 2.13 | Apache 2.0 | Same as above but builds from local source |
 | `docker-compose-cassandra.yml` | Cassandra 4.1 | Cassandra (default) | Apache 2.0 | Lightweight, no search backend |
 | `docker-compose-cassandra-elastic.yml` | Cassandra 4.1 | Elasticsearch 8.13 | ELv2 ⚠ | Cannot be offered as a managed service |
 | `docker-compose-postgresql.yml` | PostgreSQL 13 | PostgreSQL (default) | Apache 2.0 | Simpler ops if you already run Postgres |
@@ -127,22 +154,43 @@ docker compose -f docker-compose-cassandra-elastic.yml up -d
 docker compose -f docker-compose-postgresql.yml up -d
 ```
 
+### Local dev (build from source)
+
+```bash
+docker compose -f docker-compose-dev.yml up -d
+```
+
 ---
 
 ## Running
+
+`docker compose up -d` starts **all** services including the worker, API, and kafka-consumer. Use the manual steps below only when you want to run services outside Docker (e.g. for live code reloading during development).
 
 **Step 1 — Start the Temporal server:**
 ```bash
 docker compose up -d
 ```
-Temporal UI: http://localhost:8080
+Temporal UI: http://localhost:8080  
+Kafka UI: http://localhost:8082
 
 **Step 2 — Start the worker** (keep running in Terminal 1):
 ```bash
 go run worker/main.go
 ```
 
-**Step 3 — Trigger a workflow run** (Terminal 2):
+**Step 3 — Start the API server** (keep running in Terminal 2):
+```bash
+go run api/main.go
+# Listens on :8081
+```
+
+**Step 4 — Start the Kafka consumer** (keep running in Terminal 3):
+```bash
+go run kafka-consumer/main.go
+# Subscribes to temporal.workflow.start and temporal.workflow.signal
+```
+
+**Step 5 — Trigger a workflow run** (Terminal 4):
 ```bash
 go run trigger/main.go
 ```
@@ -151,9 +199,37 @@ Output:
 Started workflow: ID=email-track-workflow-<uuid> RunID=<uuid>
 ```
 The starter blocks waiting for the result. The workflow will:
-1. Sleep for 1 minute
+1. Sleep for the configured wait duration
 2. Send the initial email
-3. Wait up to 2 minutes for an `email-open` signal
+3. Wait up to the configured timeout for an `email-open` signal
+
+## API endpoints
+
+The API server (`api/main.go`) listens on `:8081`.
+
+| Method | Path | Body | Response | Description |
+|--------|------|------|----------|-------------|
+| `POST` | `/workflows` | `WorkflowInput` JSON | `202 {"workflow_id":"…","run_id":"…"}` | Start a new workflow |
+| `GET` | `/workflows/{id}` | — | `200 {"status":"…","run_id":"…"}` | Get workflow status |
+| `POST` | `/workflows/{id}/signal` | `{"signal_name":"…","payload":"…"}` | `200 {"ok":true}` | Send a signal to a running workflow |
+| `POST` | `/kafka` | `{"topic":"…","payload":{…}}` | `202 {"status":"published"}` | Publish a message to Kafka |
+
+Valid Kafka topics: `temporal.workflow.start`, `temporal.workflow.signal`.
+
+## Kafka integration
+
+Two Kafka topics bridge async events into Temporal:
+
+| Topic | Consumer group | Message format | Effect |
+|-------|---------------|----------------|--------|
+| `temporal.workflow.start` | `temporal-consumer-start` | `{"input": <WorkflowInput>}` | Starts a new workflow via the Temporal SDK |
+| `temporal.workflow.signal` | `temporal-consumer-signal` | `{"workflow_id":"…","signal_name":"…","payload":"…"}` | Sends a signal to an existing workflow |
+
+The kafka-consumer service:
+- Runs both consumers concurrently
+- Auto-creates topics on startup if they don't exist
+- Commits offsets only after successful Temporal calls
+- Shuts down gracefully on SIGTERM/SIGINT
 
 ## Testing both branches
 
@@ -176,7 +252,7 @@ Expected result:
 
 ### Branch B — Timeout (email not opened)
 
-Don't send a signal. After 2 minutes the workflow takes the `on_timeout` path.
+Don't send a signal. After the configured timeout the workflow takes the `on_timeout` path.
 
 Expected result:
 ```

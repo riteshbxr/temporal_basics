@@ -25,9 +25,7 @@ temporal-basics/
 │   ├── generic_workflow.go     # GenericWorkflow — interprets the step graph
 │   └── types.go                # WorkflowInput, Step, ContactInfo, etc.
 ├── activities/
-│   ├── send_email.go           # SendEmailActivity — 2s fake delay
-│   ├── wait.go                 # WaitActivity (registered but unused by default)
-│   └── wait_for_event.go       # WaitForEventActivity (registered but unused by default)
+│   └── send_email.go           # SendEmailActivity — 2s fake delay
 ├── worker/
 │   └── main.go                 # Starts the Temporal worker
 ├── trigger/

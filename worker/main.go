@@ -42,8 +42,6 @@ func main() {
 	})
 
 	w.RegisterWorkflow(workflow.GenericWorkflow)
-	w.RegisterActivity(activities.WaitActivity)
-	w.RegisterActivity(activities.WaitForEventActivity)
 	w.RegisterActivity(activities.SendEmailActivity)
 
 	if err = w.Run(worker.InterruptCh()); err != nil {

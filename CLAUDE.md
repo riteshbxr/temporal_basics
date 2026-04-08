@@ -23,9 +23,7 @@ temporal_basics/
 ├── go.mod / go.sum
 ├── activities/
 │   ├── send_email.go        # SendEmailActivity(ctx, to, subject, body) → string
-│   ├── wait.go              # WaitActivity — exists but NOT called by GenericWorkflow
-│   ├── wait_for_event.go    # WaitForEventActivity — exists but NOT called by GenericWorkflow
-│   └── shared.go
+│   └── (no additional activities)
 ├── workflow/
 │   ├── types.go             # WorkflowInput, Step, ContactInfo, WorkflowDef, etc.
 │   └── generic_workflow.go  # GenericWorkflow — JSON step graph interpreter
@@ -165,8 +163,6 @@ replay-safe without extra activity timeouts.
 
 ### Activities (in `activities/`)
 - `SendEmailActivity` — logs email to stdout, sleeps 2s, returns result string
-- `WaitActivity` — sleeps for given duration; **currently unused** by `GenericWorkflow`
-- `WaitForEventActivity` — simulates event polling; **currently unused** by `GenericWorkflow`
 
 ## Coding Conventions
 
